@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+faster-whisper
+pyannote.audio
+openai
+psycopg2-binary
+sqlalchemy
+python-multipart
+pika
+python-dotenv
+PyJWT
+bcrypt
+openpyxl
