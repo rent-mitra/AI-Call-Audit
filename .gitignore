@@ -1,0 +1,53 @@
+# Virtual Environments
+venv/
+.venv/
+backend/venv/
+
+# Node Dependency Directory
+node_modules/
+frontend/node_modules/
+
+# Environment Variables (Contains sensitive API Keys and Credentials)
+.env
+backend/.env
+*.env.local
+*.env.*.local
+
+# Python Compiled Files & Caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build and Output Directories
+dist/
+frontend/dist/
+build/
+
+# Application Uploads & Storage (Audio/Media records containing PII)
+backend/storage/*
+!backend/storage/.gitkeep
+*.wav
+*.mp3
+*.m4a
+*.aac
+
+# Editor & OS Files
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Scratch & Debug files (optional, uncomment to ignore)
+# check_user.py
+# list_users.py
+# test_*.py
+# backend/scratch_*.py
+›››
