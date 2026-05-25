@@ -17,7 +17,9 @@ def calculate_final_score(ai_results: list, qa_parameters: list):
             continue
             
         total_possible_marks += param_config.marks
-        total_obtained_marks += res.get("marks_obtained", 0)
+        # Cap obtained marks between 0 and max marks to avoid score > 100%
+        obtained_marks = max(0, min(res.get("marks_obtained", 0), param_config.marks))
+        total_obtained_marks += obtained_marks
         
         # Check mandatory failure
         if param_config.mandatory and res.get("status") == "Failed":
@@ -28,6 +30,7 @@ def calculate_final_score(ai_results: list, qa_parameters: list):
         score_percentage = 0
     else:
         score_percentage = (total_obtained_marks / total_possible_marks) * 100
+        score_percentage = min(100, max(0, score_percentage))
 
     # Apply Rules
     # Score >= 80% AND no mandatory failure -> Passed
