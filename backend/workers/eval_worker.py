@@ -52,6 +52,12 @@ def process_eval_task(ch, method, properties, body):
         final_status, total_score, mandatory_failed = calculate_final_score(ai_results, qa_parameters)
         
         # 3. Store Results
+        # Clean up existing QAResult if it exists (for re-auditing)
+        existing_result = db.query(QAResult).filter(QAResult.call_id == call.id).first()
+        if existing_result:
+            db.delete(existing_result)
+            db.commit()
+
         qa_result = QAResult(
             call_id=call.id,
             final_status=final_status,

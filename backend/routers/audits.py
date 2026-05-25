@@ -68,7 +68,10 @@ def get_audit_details(c: Call):
         "agentId": str(c.agent_id) if c.agent_id else None,
         "agentName": agent_name,
         "qaId": str(c.qa_id) if c.qa_id else None,
-        "qaName": qa_name
+        "qaName": qa_name,
+        "agentReviewStatus": c.agent_review_status,
+        "agentReviewComments": c.agent_review_comments,
+        "qaReviewComments": c.qa_review_comments
     }
 
 def generate_csv_response(calls: List[Call], filename: str) -> StreamingResponse:

@@ -7,7 +7,16 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Call, QAResult, CallTranscript, QAResultDetail, User, AgentProfile, QAProfile, QAParameter
-from services.rabbitmq_publisher import publish_audio_task
+from services.rabbitmq_publisher import publish_audio_task, publish_eval_task
+from pydantic import BaseModel
+
+class AgentReviewPayload(BaseModel):
+    status: str
+    comments: Optional[str] = None
+
+class QAReviewPayload(BaseModel):
+    action: str
+    comments: Optional[str] = None
 
 router = APIRouter(
     prefix="/calls",
@@ -166,6 +175,9 @@ def get_all_calls(request: Request, db: Session = Depends(get_db)):
             "agentName": _agent_name(c),
             "qaId": str(c.qa_id) if c.qa_id else None,
             "qaName": _qa_name(c),
+            "agentReviewStatus": c.agent_review_status,
+            "agentReviewComments": c.agent_review_comments,
+            "qaReviewComments": c.qa_review_comments,
         })
     return result
 
@@ -316,6 +328,9 @@ def get_call_detail(call_id: str, request: Request, db: Session = Depends(get_db
         "agentName": _agent_name(call),
         "qaId": str(call.qa_id) if call.qa_id else None,
         "qaName": _qa_name(call),
+        "agentReviewStatus": call.agent_review_status,
+        "agentReviewComments": call.agent_review_comments,
+        "qaReviewComments": call.qa_review_comments,
     }
 
 
@@ -378,3 +393,86 @@ def delete_call(call_id: str, request: Request, db: Session = Depends(get_db)):
     db.delete(call)
     db.commit()
     return {"message": "Call deleted successfully."}
+
+
+@router.post("/{call_id}/agent-review")
+def submit_agent_review(
+    call_id: str,
+    payload: AgentReviewPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = getattr(request.state, "user", None)
+    if not user or not user.get("tenant_id"):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if user.get("role") != "AGENT":
+        raise HTTPException(status_code=403, detail="Only agents can review their audited calls.")
+        
+    try:
+        call_uuid = uuid.UUID(call_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid call_id format.")
+
+    tenant_uuid = uuid.UUID(user["tenant_id"])
+    agent_uuid = uuid.UUID(user["user_id"])
+    
+    call = db.query(Call).filter(Call.id == call_uuid, Call.tenant_id == tenant_uuid, Call.agent_id == agent_uuid).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Call record not found or access denied.")
+
+    # Only audited calls can be reviewed
+    if not call.qa_result:
+        raise HTTPException(status_code=400, detail="Call has not been audited yet.")
+
+    status_upper = payload.status.upper()
+    if status_upper not in ["SATISFIED", "DISPUTED"]:
+        raise HTTPException(status_code=400, detail="Invalid review status. Must be SATISFIED or DISPUTED.")
+
+    call.agent_review_status = status_upper
+    call.agent_review_comments = payload.comments
+    
+    db.commit()
+    return {"message": f"Review submitted successfully as {status_upper}."}
+
+
+@router.post("/{call_id}/qa-review")
+def submit_qa_review(
+    call_id: str,
+    payload: QAReviewPayload,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    user = getattr(request.state, "user", None)
+    if not user or not user.get("tenant_id"):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if user.get("role") != "QA":
+        raise HTTPException(status_code=403, detail="Only QA users can manage agent reviews.")
+        
+    try:
+        call_uuid = uuid.UUID(call_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid call_id format.")
+
+    tenant_uuid = uuid.UUID(user["tenant_id"])
+    
+    call = db.query(Call).filter(Call.id == call_uuid, Call.tenant_id == tenant_uuid).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Call record not found.")
+
+    if call.agent_review_status != "DISPUTED":
+        raise HTTPException(status_code=400, detail="This call has not been disputed by the agent.")
+
+    action_upper = payload.action.upper()
+    if action_upper == "REJECT":
+        call.agent_review_status = "DISPUTE_REJECTED"
+        call.qa_review_comments = payload.comments
+    elif action_upper == "RE_AUDIT":
+        call.agent_review_status = "RE_AUDITED"
+        call.qa_review_comments = payload.comments
+        call.status = "PENDING"
+        publish_audio_task(str(call.id), call.storage_url)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be RE_AUDIT or REJECT.")
+
+    db.commit()
+    return {"message": f"QA review completed with action: {action_upper}."}

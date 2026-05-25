@@ -41,3 +41,33 @@ def publish_audio_task(call_id: str, file_path: str):
     except Exception as e:
         print(f"Failed to publish message: {e}")
         return False
+
+def publish_eval_task(call_id: str):
+    """
+    Publish a message to the eval_processing_queue.
+    """
+    try:
+        connection = get_rabbitmq_connection()
+        channel = connection.channel()
+
+        # Ensure the queue exists
+        channel.queue_declare(queue='eval_processing_queue', durable=True)
+
+        message = {
+            "call_id": call_id
+        }
+
+        channel.basic_publish(
+            exchange='',
+            routing_key='eval_processing_queue',
+            body=json.dumps(message),
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+            )
+        )
+        print(f" [x] Sent eval task for call_id: {call_id}")
+        connection.close()
+        return True
+    except Exception as e:
+        print(f"Failed to publish eval message: {e}")
+        return False

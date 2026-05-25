@@ -85,6 +85,36 @@ const QADashboard = () => {
         ))}
       </div>
 
+      {/* Appeals Needing Attention */}
+      {activeTab === 'Audit History' && !selectedAgent && (
+        (() => {
+          const disputedCalls = calls.filter(c => c.agentReviewStatus === 'DISPUTED');
+          if (disputedCalls.length === 0) return null;
+          return (
+            <div className="glass-card" style={{ marginBottom: '24px', borderColor: 'var(--warning)', background: 'rgba(245, 158, 11, 0.03)' }}>
+              <h3 style={{ fontSize: '1.1rem', color: 'var(--warning)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} /> Appeals Needing Attention ({disputedCalls.length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {disputedCalls.map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderRadius: '8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
+                    <div>
+                      <div style={{ fontWeight: '600' }}>{c.filename}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        Agent: {c.agentName} • Comments: "{c.agentReviewComments || 'No comment provided.'}"
+                      </div>
+                    </div>
+                    <button onClick={() => viewAudit(c.id)} className="btn-primary" style={{ padding: '6px 14px', fontSize: '0.8rem', backgroundColor: 'var(--warning)', color: 'black' }}>
+                      Resolve Appeal
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()
+      )}
+
       {/* AUDIT HISTORY */}
       {activeTab === 'Audit History' && (
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -143,7 +173,24 @@ const QADashboard = () => {
                       <td style={tdStyle}><div style={{ fontWeight: '500' }}>{c.filename}</div></td>
                       <td style={{ ...tdStyle, color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{c.date}</td>
                       <td style={tdStyle}>{statusBadge(c.status)}</td>
-                      <td style={tdStyle}>{c.final_status ? statusBadge(c.final_status) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+                          {c.final_status ? statusBadge(c.final_status) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                          {c.agentReviewStatus && (
+                            <span style={{
+                              fontSize: '0.65rem',
+                              fontWeight: '700',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: c.agentReviewStatus === 'SATISFIED' ? 'rgba(16,185,129,0.1)' : c.agentReviewStatus === 'DISPUTED' ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.1)',
+                              color: c.agentReviewStatus === 'SATISFIED' ? 'var(--success)' : c.agentReviewStatus === 'DISPUTED' ? 'var(--error)' : 'var(--text-muted)',
+                              border: `1px solid ${c.agentReviewStatus === 'SATISFIED' ? 'rgba(16,185,129,0.2)' : c.agentReviewStatus === 'DISPUTED' ? 'rgba(239,68,68,0.2)' : 'rgba(107,114,128,0.2)'}`
+                            }}>
+                              {c.agentReviewStatus === 'DISPUTE_REJECTED' ? 'DISPUTE REJECTED' : c.agentReviewStatus}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={tdStyle}>
                         {c.score !== null ? (
                           <span style={{ fontWeight: '700', color: c.score >= 75 ? 'var(--success)' : c.score >= 50 ? 'var(--warning)' : 'var(--error)' }}>

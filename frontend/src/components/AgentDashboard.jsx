@@ -115,7 +115,24 @@ const AgentDashboard = () => {
                           ? <span style={{ fontWeight: '700', color: c.score >= 75 ? 'var(--success)' : c.score >= 50 ? 'var(--warning)' : 'var(--error)' }}>{c.score}%</span>
                           : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
-                      <td style={tdStyle}>{statusBadge(c.final_status || c.status)}</td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+                          {statusBadge(c.final_status || c.status)}
+                          {c.agentReviewStatus && (
+                            <span style={{
+                              fontSize: '0.65rem',
+                              fontWeight: '700',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: c.agentReviewStatus === 'SATISFIED' ? 'rgba(16,185,129,0.1)' : c.agentReviewStatus === 'DISPUTED' ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.1)',
+                              color: c.agentReviewStatus === 'SATISFIED' ? 'var(--success)' : c.agentReviewStatus === 'DISPUTED' ? 'var(--error)' : 'var(--text-muted)',
+                              border: `1px solid ${c.agentReviewStatus === 'SATISFIED' ? 'rgba(16,185,129,0.2)' : c.agentReviewStatus === 'DISPUTED' ? 'rgba(239,68,68,0.2)' : 'rgba(107,114,128,0.2)'}`
+                            }}>
+                              {c.agentReviewStatus === 'DISPUTE_REJECTED' ? 'DISPUTE REJECTED' : c.agentReviewStatus}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td style={tdStyle}>
                         {c.qaName
                           ? <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

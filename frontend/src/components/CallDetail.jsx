@@ -13,21 +13,81 @@ const CallDetail = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [audioUrl, setAudioUrl] = useState(null);
 
-  useEffect(() => {
-    // Attempt fetch call data
+  // Appeal & review states
+  const [agentComments, setAgentComments] = useState('');
+  const [qaComments, setQaComments] = useState('');
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
+  const [showDisputeInput, setShowDisputeInput] = useState(false);
+
+  const fetchCallData = () => {
+    setIsLoading(true);
     api.get(`/calls/${id}`).then(res => {
       setCallData(res.data);
-      if (res.data.ai_feedback) setAiFeedback(res.data.ai_feedback);
       setIsLoading(false);
     }).catch(err => {
       setIsLoading(false);
     });
+  };
+
+  useEffect(() => {
+    fetchCallData();
 
     // Fetch audio blob
     api.get(`/calls/${id}/audio`, { responseType: 'blob' }).then(res => {
       setAudioUrl(URL.createObjectURL(res.data));
     }).catch(err => console.error("Failed to load audio streaming URL.", err));
   }, [id, user?.role]);
+  useEffect(() => {
+    if (!callData || callData.status === 'COMPLETED' || callData.status === 'FAILED') {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      api.get(`/calls/${id}`).then(res => {
+        setCallData(res.data);
+      }).catch(err => console.error("Failed to poll call data:", err));
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [callData?.status, id]);
+  const handleAgentReview = async (status, comments = '') => {
+    setIsReviewSubmitting(true);
+    try {
+      await api.post(`/calls/${id}/agent-review`, { status, comments });
+      // Re-fetch call data to update UI
+      api.get(`/calls/${id}`).then(res => {
+        setCallData(res.data);
+      });
+      setShowDisputeInput(false);
+      setAgentComments('');
+    } catch (err) {
+      console.error("Failed to submit agent review:", err);
+      alert(err.response?.data?.detail || "Failed to submit review.");
+    } finally {
+      setIsReviewSubmitting(false);
+    }
+  };
+
+  const handleQaReview = async (action) => {
+    if (!qaComments.trim()) {
+      alert("Please provide feedback or comments for your decision.");
+      return;
+    }
+    setIsReviewSubmitting(true);
+    try {
+      await api.post(`/calls/${id}/qa-review`, { action, comments: qaComments });
+      // Re-fetch call data to update UI
+      api.get(`/calls/${id}`).then(res => {
+        setCallData(res.data);
+      });
+      setQaComments('');
+    } catch (err) {
+      console.error("Failed to submit QA review:", err);
+      alert(err.response?.data?.detail || "Failed to submit QA review.");
+    } finally {
+      setIsReviewSubmitting(false);
+    }
+  };
 
   if (isLoading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
   if (!callData) return <div style={{ padding: '40px', textAlign: 'center' }}>Call not found.</div>;
@@ -38,7 +98,7 @@ const CallDetail = () => {
     return <AlertCircle size={20} color="var(--warning)" />;
   };
 
-  const isAudited = !!callData.final_status;
+  const isAudited = callData.status === 'COMPLETED';
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '1000px', margin: '0 auto' }}>
@@ -97,6 +157,190 @@ const CallDetail = () => {
         </div>
       )}
 
+      {/* Agent & QA Review Panel */}
+      {isAudited && (
+        <div className="glass-card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent-primary)' }}>
+          <h3 style={{ fontSize: '1.2rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            💬 Audit Appeal & Satisfaction Review
+          </h3>
+          
+          {/* Case 1: No review submitted yet & logged in as Agent */}
+          {user?.role === 'AGENT' && !callData.agentReviewStatus && (
+            <div>
+              <p style={{ marginBottom: '16px' }}>How do you feel about the AI/QA audit results for this call?</p>
+              {!showDisputeInput ? (
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button 
+                    className="btn-primary" 
+                    style={{ backgroundColor: 'var(--success)' }}
+                    disabled={isReviewSubmitting}
+                    onClick={() => handleAgentReview('SATISFIED')}
+                  >
+                    Mark as Satisfied
+                  </button>
+                  <button 
+                    className="btn-secondary" 
+                    style={{ borderColor: 'var(--error)', color: 'var(--error)' }}
+                    disabled={isReviewSubmitting}
+                    onClick={() => setShowDisputeInput(true)}
+                  >
+                    Mark as Unsatisfied / Dispute
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                    Please explain your objection or reason for disputing this audit:
+                  </label>
+                  <textarea
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      padding: '10px',
+                      fontFamily: 'inherit',
+                      outline: 'none'
+                    }}
+                    placeholder="E.g., The AI misattributed SPEAKER_00's greeting to the customer instead of the agent."
+                    value={agentComments}
+                    onChange={(e) => setAgentComments(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button 
+                      className="btn-primary" 
+                      style={{ backgroundColor: 'var(--error)' }}
+                      disabled={isReviewSubmitting || !agentComments.trim()}
+                      onClick={() => handleAgentReview('DISPUTED', agentComments)}
+                    >
+                      {isReviewSubmitting ? 'Submitting...' : 'Submit Appeal to QA'}
+                    </button>
+                    <button 
+                      className="btn-secondary" 
+                      disabled={isReviewSubmitting}
+                      onClick={() => {
+                        setShowDisputeInput(false);
+                        setAgentComments('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Case 2: Disputed call & logged in as QA */}
+          {user?.role === 'QA' && callData.agentReviewStatus === 'DISPUTED' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: 'var(--error-bg)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '16px', borderRadius: '8px' }}>
+                <h4 style={{ color: 'var(--error)', margin: '0 0 8px 0', fontSize: '1rem' }}>⚠️ Dispute Raised by Agent</h4>
+                <p style={{ color: 'var(--text-primary)', fontStyle: 'italic', margin: 0 }}>
+                  "{callData.agentReviewComments || 'No comment provided.'}"
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                  Provide response comments (Required to resolve dispute):
+                </label>
+                <textarea
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    padding: '10px',
+                    fontFamily: 'inherit',
+                    outline: 'none'
+                  }}
+                  placeholder="Explain why you are rejecting the appeal or confirm if you accept and will re-audit."
+                  value={qaComments}
+                  onChange={(e) => setQaComments(e.target.value)}
+                />
+                
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button 
+                    className="btn-primary" 
+                    style={{ backgroundColor: 'var(--success)' }}
+                    disabled={isReviewSubmitting || !qaComments.trim()}
+                    onClick={() => handleQaReview('RE_AUDIT')}
+                  >
+                    Accept Appeal & Mark Re-Audited
+                  </button>
+                  <button 
+                    className="btn-primary" 
+                    style={{ backgroundColor: 'var(--error)' }}
+                    disabled={isReviewSubmitting || !qaComments.trim()}
+                    onClick={() => handleQaReview('REJECT')}
+                  >
+                    Reject Appeal
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Case 3: Review submitted or resolved (Viewed by Agent or QA) */}
+          {(callData.agentReviewStatus && (user?.role !== 'QA' || callData.agentReviewStatus !== 'DISPUTED')) && (
+            <div>
+              {callData.agentReviewStatus === 'SATISFIED' && (
+                <div style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500' }}>
+                  <CheckCircle size={18} /> Agent marked this audit as Satisfied.
+                </div>
+              )}
+              
+              {callData.agentReviewStatus === 'DISPUTED' && (
+                <div>
+                  <div style={{ color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500', marginBottom: '8px' }}>
+                    <AlertCircle size={18} /> Audit Appeal Submitted (Awaiting QA Review)
+                  </div>
+                  <p style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '6px', fontStyle: 'italic' }}>
+                    Agent comments: "{callData.agentReviewComments}"
+                  </p>
+                </div>
+              )}
+
+              {callData.agentReviewStatus === 'DISPUTE_REJECTED' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ color: 'var(--error)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500' }}>
+                    <XCircle size={18} /> QA Rejected Agent Dispute
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p style={{ margin: 0 }}><strong style={{ color: 'var(--text-primary)' }}>Agent comments:</strong> "{callData.agentReviewComments}"</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: 'var(--text-primary)' }}>QA decision notes:</strong> "{callData.qaReviewComments}"</p>
+                  </div>
+                </div>
+              )}
+
+              {callData.agentReviewStatus === 'RE_AUDITED' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '500' }}>
+                    <CheckCircle size={18} /> QA Accepted Appeal & Re-Audited Call
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '16px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p style={{ margin: 0 }}><strong style={{ color: 'var(--text-primary)' }}>Agent comments:</strong> "{callData.agentReviewComments}"</p>
+                    <p style={{ margin: 0 }}><strong style={{ color: 'var(--text-primary)' }}>QA re-audit notes:</strong> "{callData.qaReviewComments}"</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Case 4: No review submitted yet & logged in as QA */}
+          {user?.role === 'QA' && !callData.agentReviewStatus && (
+            <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+              Awaiting agent review (agent has not marked satisfaction yet).
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="grid-cols-2" style={{ gridTemplateColumns: '1.5fr 1fr', alignItems: 'start' }}>
         
         {/* Left Column: Evaluation Breakdown or Status */}
@@ -110,6 +354,20 @@ const CallDetail = () => {
                   <h3>Audit Failed</h3>
                   <p>The AI encountered an error while processing this call recording.</p>
                 </>
+              ) : (callData.status === 'EVALUATING' || callData.status === 'PENDING' || callData.status === 'TRANSCRIBING' || callData.status === 'PENDING_EVALUATION') ? (
+                callData.agentReviewStatus === 'RE_AUDITED' ? (
+                  <>
+                    <AlertCircle size={48} style={{ margin: '0 auto 16px auto', color: 'var(--warning)' }} />
+                    <h3>Re-Auditing & Re-Transcribing</h3>
+                    <p>The system is currently re-transcribing and re-evaluating the call recording. Please wait.</p>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle size={48} style={{ margin: '0 auto 16px auto', color: 'var(--warning)' }} />
+                    <h3>Processing Audit</h3>
+                    <p>The AI is currently analyzing the call recording. Please wait.</p>
+                  </>
+                )
               ) : (
                 <>
                   <AlertCircle size={48} style={{ margin: '0 auto 16px auto', color: 'var(--warning)' }} />

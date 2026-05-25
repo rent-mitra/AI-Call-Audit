@@ -18,6 +18,33 @@ logger = logging.getLogger("main")
 # Auto-create tables (for dev simplicity, alembic is also supported)
 Base.metadata.create_all(bind=engine)
 
+def check_and_add_columns():
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text
+        # Check if columns exist in the calls table
+        result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='calls';"))
+        columns = [row[0] for row in result.fetchall()]
+        
+        if "agent_review_status" not in columns:
+            db.execute(text("ALTER TABLE calls ADD COLUMN agent_review_status VARCHAR(50) DEFAULT NULL;"))
+            logger.info("Added agent_review_status column to calls table.")
+        if "agent_review_comments" not in columns:
+            db.execute(text("ALTER TABLE calls ADD COLUMN agent_review_comments TEXT DEFAULT NULL;"))
+            logger.info("Added agent_review_comments column to calls table.")
+        if "qa_review_comments" not in columns:
+            db.execute(text("ALTER TABLE calls ADD COLUMN qa_review_comments TEXT DEFAULT NULL;"))
+            logger.info("Added qa_review_comments column to calls table.")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error checking/adding calls columns: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+# Run database column checks
+check_and_add_columns()
+
 def initialize_default_tenant():
     db = SessionLocal()
     try:

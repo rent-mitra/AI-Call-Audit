@@ -84,6 +84,10 @@ def process_audio_task(ch, method, properties, body):
         print(f" [v] Full text length: {len(full_text)} characters.")
 
         # 4. Save to DB
+        # Clean up existing transcripts if they exist (for re-transcription)
+        db.query(CallTranscript).filter(CallTranscript.call_id == call.id).delete()
+        db.commit()
+
         transcript_record = CallTranscript(
             call_id=call.id,
             transcript_data=final_transcript,

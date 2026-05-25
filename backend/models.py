@@ -48,6 +48,11 @@ class Call(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
 
+    # Agent review/dispute tracking fields
+    agent_review_status = Column(String, nullable=True) # PENDING, SATISFIED, DISPUTED, RE_AUDITED, DISPUTE_REJECTED
+    agent_review_comments = Column(Text, nullable=True)
+    qa_review_comments = Column(Text, nullable=True)
+
     transcripts = relationship("CallTranscript", back_populates="call", cascade="all, delete-orphan")
     qa_result = relationship("QAResult", back_populates="call", uselist=False, cascade="all, delete-orphan")
     agent = relationship("User", foreign_keys=[agent_id])
